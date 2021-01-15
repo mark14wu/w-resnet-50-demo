@@ -94,7 +94,7 @@ if __name__ == '__main__':
                 device_num=get_group_size(),
                 parallel_mode=ParallelMode.AUTO_PARALLEL,
                 gradients_mean=True,
-                auto_parallel_search_mode="recursive_programming"
+                auto_parallel_search_mode="dynamic_programming"
             )
             if args_opt.net == "resnet50":
                 context.set_auto_parallel_context(all_reduce_fusion_config=[85, 160])
