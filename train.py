@@ -16,6 +16,8 @@
 import os
 import argparse
 import ast
+
+from mindspore.parallel import set_algo_parameters
 from mindspore import context
 from mindspore import Tensor
 from mindspore.nn.optim.momentum import Momentum
@@ -96,6 +98,8 @@ if __name__ == '__main__':
                 gradients_mean=True,
                 auto_parallel_search_mode="dynamic_programming"
             )
+
+            set_algo_parameters(elementwise_op_strategy_follow=True)
             if args_opt.net == "resnet50":
                 context.set_auto_parallel_context(all_reduce_fusion_config=[85, 160])
         ckpt_save_dir = config.save_checkpoint_path + "ckpt_" + str(get_rank()) + "/"

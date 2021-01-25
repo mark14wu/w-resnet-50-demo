@@ -82,7 +82,8 @@ class FirstResidualBlock(nn.Cell):
                  stride=1):
         super(FirstResidualBlock, self).__init__()
         self.stride = stride
-        channel = out_channel // self.expansion
+        # channel = out_channel // self.expansion
+        channel = out_channel * 2
         self.conv1 = _conv1x1(in_channel, channel, stride=1)
         self.bn1 = _bn(channel)
         self.conv2 = _conv3x3(channel, channel, stride=stride)
@@ -148,7 +149,8 @@ class ResidualBlock(nn.Cell):
                  stride=1):
         super(ResidualBlock, self).__init__()
         self.stride = stride
-        channel = out_channel // self.expansion
+        # channel = out_channel // self.expansion
+        channel = out_channel * 2
         self.conv1 = _conv1x1(in_channel, channel, stride=1)
         self.bn1 = _bn(channel)
         self.conv2 = _conv3x3(channel, channel, stride=stride)
@@ -316,7 +318,7 @@ def resnet50(class_num=10):
     #               class_num)
 
     return ResNet(ResidualBlock,
-                  [3, 8, 36, 3],
+                  [1, 8, 6, 3],
                   [64, 256, 512, 1024],
                   [256, 512, 1024, 2048],
                   [1, 2, 2, 2],
