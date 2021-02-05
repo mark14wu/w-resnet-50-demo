@@ -49,6 +49,8 @@ args_opt = parser.parse_args()
 
 set_seed(1)
 
+os.environ['GLOG_v'] = '1'
+
 if args_opt.net == "resnet50":
     from src.resnet import resnet50 as resnet
     if args_opt.dataset == "cifar10":
@@ -76,32 +78,19 @@ if __name__ == '__main__':
     if args_opt.parameter_server:
         context.set_ps_context(enable_ps=True)
     if args_opt.run_distribute:
-        if target == "Ascend":
-            device_id = int(os.getenv('DEVICE_ID'))
-            context.set_context(device_id=device_id, enable_auto_mixed_precision=True)
-            context.set_auto_parallel_context(device_num=args_opt.device_num, parallel_mode=ParallelMode.AUTO_PARALLEL,
-                                              gradients_mean=True)
-            if args_opt.net == "resnet50" or args_opt.net == "se-resnet50":
-                context.set_auto_parallel_context(all_reduce_fusion_config=[85, 160])
-            else:
-                context.set_auto_parallel_context(all_reduce_fusion_config=[180, 313])
-            init()
-        # GPU target
-        else:
-            init()
-            # context.set_auto_parallel_context(device_num=get_group_size(), parallel_mode=ParallelMode.DATA_PARALLEL,
-            #                                   gradients_mean=True)
+        init()
+        # context.set_auto_parallel_context(device_num=get_group_size(), parallel_mode=ParallelMode.DATA_PARALLEL,
+        #                                   gradients_mean=True)
 
-            context.set_auto_parallel_context(
-                device_num=get_group_size(),
-                parallel_mode=ParallelMode.AUTO_PARALLEL,
-                gradients_mean=True,
-                auto_parallel_search_mode="dynamic_programming"
-            )
+        context.set_auto_parallel_context(
+            device_num=get_group_size(),
+            parallel_mode=ParallelMode.SEMI_AUTO_PARALLEL,
+            gradients_mean=True
+        )
 
-            set_algo_parameters(elementwise_op_strategy_follow=True)
-            if args_opt.net == "resnet50":
-                context.set_auto_parallel_context(all_reduce_fusion_config=[85, 160])
+        set_algo_parameters(elementwise_op_strategy_follow=True)
+        if args_opt.net == "resnet50":
+            context.set_auto_parallel_context(all_reduce_fusion_config=[85, 160])
         ckpt_save_dir = config.save_checkpoint_path + "ckpt_" + str(get_rank()) + "/"
 
     # create dataset
@@ -153,38 +142,26 @@ if __name__ == '__main__':
                     {'order_params': net.trainable_params()}]
     opt = Momentum(group_params, lr, config.momentum, loss_scale=config.loss_scale)
     # define loss, model
-    if target == "Ascend":
-        if args_opt.dataset == "imagenet2012":
-            if not config.use_label_smooth:
-                config.label_smooth_factor = 0.0
-            loss = CrossEntropySmooth(sparse=True, reduction="mean",
-                                      smooth_factor=config.label_smooth_factor, num_classes=config.class_num)
-        else:
-            loss = SoftmaxCrossEntropyWithLogits(sparse=True, reduction='mean')
-        loss_scale = FixedLossScaleManager(config.loss_scale, drop_overflow_update=False)
-        model = Model(net, loss_fn=loss, optimizer=opt, loss_scale_manager=loss_scale, metrics={'acc'},
-                      amp_level="O2", keep_batchnorm_fp32=False)
+    # GPU target
+    if args_opt.dataset == "imagenet2012":
+        if not config.use_label_smooth:
+            config.label_smooth_factor = 0.0
+        loss = CrossEntropySmooth(sparse=True, reduction="mean",
+                                    smooth_factor=config.label_smooth_factor, num_classes=config.class_num)
     else:
-        # GPU target
-        if args_opt.dataset == "imagenet2012":
-            if not config.use_label_smooth:
-                config.label_smooth_factor = 0.0
-            loss = CrossEntropySmooth(sparse=True, reduction="mean",
-                                      smooth_factor=config.label_smooth_factor, num_classes=config.class_num)
-        else:
-            loss = SoftmaxCrossEntropyWithLogits(sparse=True, reduction="mean")
+        loss = SoftmaxCrossEntropyWithLogits(sparse=True, reduction="mean")
 
-        if (args_opt.net == "resnet101" or args_opt.net == "resnet50") and not args_opt.parameter_server:
-            opt = Momentum(filter(lambda x: x.requires_grad, net.get_parameters()), lr, config.momentum, config.weight_decay,
-                           config.loss_scale)
-            loss_scale = FixedLossScaleManager(config.loss_scale, drop_overflow_update=False)
-            # Mixed precision
-            model = Model(net, loss_fn=loss, optimizer=opt, loss_scale_manager=loss_scale, metrics={'acc'},
-                          amp_level="O2", keep_batchnorm_fp32=False)
-        else:
-            ## fp32 training
-            opt = Momentum(filter(lambda x: x.requires_grad, net.get_parameters()), lr, config.momentum, config.weight_decay)
-            model = Model(net, loss_fn=loss, optimizer=opt, metrics={'acc'})
+    if (args_opt.net == "resnet101" or args_opt.net == "resnet50") and not args_opt.parameter_server:
+        opt = Momentum(filter(lambda x: x.requires_grad, net.get_parameters()), lr, config.momentum, config.weight_decay,
+                        config.loss_scale)
+        loss_scale = FixedLossScaleManager(config.loss_scale, drop_overflow_update=False)
+        # Mixed precision
+        model = Model(net, loss_fn=loss, optimizer=opt, loss_scale_manager=loss_scale, metrics={'acc'},
+                        amp_level="O2", keep_batchnorm_fp32=False)
+    else:
+        ## fp32 training
+        opt = Momentum(filter(lambda x: x.requires_grad, net.get_parameters()), lr, config.momentum, config.weight_decay)
+        model = Model(net, loss_fn=loss, optimizer=opt, metrics={'acc'})
 
     # define callbacks
     time_cb = TimeMonitor(data_size=step_size)

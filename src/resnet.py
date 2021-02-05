@@ -15,6 +15,7 @@
 """ResNet."""
 import numpy as np
 import mindspore.nn as nn
+import mindspore.ops as ops
 import mindspore.common.dtype as mstype
 from mindspore.ops import operations as P
 from mindspore.ops import functional as F
@@ -72,7 +73,105 @@ def _fc(in_channel, out_channel):
     weight = _weight_variable(weight_shape)
     return nn.Dense(in_channel, out_channel, has_bias=True, weight_init=weight, bias_init=0)
 
-class FirstResidualBlock(nn.Cell):
+# class Layer1FirstBlock(nn.Cell):
+
+#     expansion = 4
+
+#     def __init__(self,
+#                  in_channel,
+#                  out_channel,
+#                  stride=1):
+#         super(Layer1FirstBlock, self).__init__()
+#         self.stride = stride
+#         channel = out_channel * self.expansion
+#         self.conv1 = _conv1x1(in_channel, channel, stride=1).conv2d.shard({(1, 1),(2, 1),(3, 1),(4, 1),(5, 1),(6, 1),(7, 1),(8, 1)})
+#         self.bn1 = _bn(channel)
+#         self.conv2 = _conv3x3(channel, channel, stride=stride).conv2d.shard({(1, 1),(2, 1),(3, 1),(4, 1),(5, 1),(6, 1),(7, 1),(8, 1)})
+#         self.bn2 = _bn(channel)
+#         self.conv3 = _conv1x1(channel, out_channel, stride=1).conv2d.shard({(1, 1),(2, 1),(3, 1),(4, 1),(5, 1),(6, 1),(7, 1),(8, 1)})
+#         self.bn3 = _bn_last(out_channel)
+#         self.relu = nn.ReLU()
+
+#         self.short_way = _conv1x1(in_channel, out_channel, stride=stride)
+
+#         self.down_sample = False
+
+#         if stride != 1 or in_channel != out_channel:
+#             self.down_sample = True
+#         self.down_sample_layer = None
+
+#         self.add = P.TensorAdd()
+
+#     def construct(self, x):
+#         identity = x
+
+#         out = self.conv1(x)
+#         out = self.bn1(out)
+#         out = self.relu(out)
+#         out = self.conv2(out)
+#         out = self.bn2(out)
+#         out = self.relu(out)
+#         out = self.conv3(out)
+#         out = self.bn3(out)
+        
+#         short_way = self.short_way(identity)
+#         out = self.add(out, short_way)
+#         out = self.relu(out)
+
+#         return out
+
+# class Layer1Block(nn.Cell):
+#     """
+#     ResNet V1 residual block definition.
+
+#     Args:
+#         in_channel (int): Input channel.
+#         out_channel (int): Output channel.
+#         stride (int): Stride size for the first convolutional layer. Default: 1.
+#         se_block(bool): use se block in SE-ResNet50 net. Default: False.
+
+#     Returns:
+#         Tensor, output tensor.
+
+#     Examples:
+#         >>> ResidualBlock(3, 256, stride=2)
+#     """
+#     expansion = 4
+
+#     def __init__(self,
+#                  in_channel,
+#                  out_channel,
+#                  stride=1):
+#         super(Layer1Block, self).__init__()
+#         self.stride = stride
+#         channel = out_channel * self.expansion
+#         self.conv1 = _conv1x1(in_channel, channel, stride=1).conv2d.shard({(1, 1),(2, 1),(3, 1),(4, 1),(5, 1),(6, 1),(7, 1),(8, 1)})
+#         self.bn1 = _bn(channel)
+#         self.conv2 = _conv3x3(channel, channel, stride=stride).conv2d.shard({(1, 1),(2, 1),(3, 1),(4, 1),(5, 1),(6, 1),(7, 1),(8, 1)})
+#         self.bn2 = _bn(channel)
+#         self.conv3 = _conv1x1(channel, out_channel, stride=1).conv2d.shard({(1, 1),(2, 1),(3, 1),(4, 1),(5, 1),(6, 1),(7, 1),(8, 1)})
+#         self.bn3 = _bn_last(out_channel)
+#         self.relu = nn.ReLU()
+#         self.add = P.TensorAdd()
+
+#     def construct(self, x):
+#         identity = x
+
+#         out = self.conv1(x)
+#         out = self.bn1(out)
+#         out = self.relu(out)
+#         out = self.conv2(out)
+#         out = self.bn2(out)
+#         out = self.relu(out)
+#         out = self.conv3(out)
+#         out = self.bn3(out)
+
+#         out = self.add(out, identity)
+#         out = self.relu(out)
+
+#         return out
+
+class Layer2FirstBlock(nn.Cell):
 
     expansion = 4
 
@@ -80,28 +179,27 @@ class FirstResidualBlock(nn.Cell):
                  in_channel,
                  out_channel,
                  stride=1):
-        super(FirstResidualBlock, self).__init__()
+        super(Layer2FirstBlock, self).__init__()
         self.stride = stride
-        # channel = out_channel // self.expansion
-        channel = out_channel * 2
+        channel = out_channel // self.expansion
+        # channel = out_channel * 2
         self.conv1 = _conv1x1(in_channel, channel, stride=1)
+        # self.conv1.conv2d = ops.MatMul()
+        # self.conv1.conv2d.shard(((2, 4), (4, 2)))
+        self.conv1.conv2d.shard(((2, 4)))
         self.bn1 = _bn(channel)
         self.conv2 = _conv3x3(channel, channel, stride=stride)
+        # self.conv2.conv2d.shard(((8, 1), (2, 4)))
+        self.conv2.conv2d.shard(((8, 1)))
         self.bn2 = _bn(channel)
         self.conv3 = _conv1x1(channel, out_channel, stride=1)
+        # self.conv3.conv2d.shard(((4, 2), (8, 1)))
+        self.conv3.conv2d.shard(((4, 2)))
         self.bn3 = _bn_last(out_channel)
         self.relu = nn.ReLU()
 
         self.short_way = _conv1x1(in_channel, out_channel, stride=stride)
 
-        self.down_sample = False
-
-        if stride != 1 or in_channel != out_channel:
-            self.down_sample = True
-        self.down_sample_layer = None
-
-        # if self.down_sample:
-        #     self.down_sample_layer = nn.SequentialCell([_conv1x1(in_channel, out_channel, stride), _bn(out_channel)])
         self.add = P.TensorAdd()
 
     def construct(self, x):
@@ -115,9 +213,6 @@ class FirstResidualBlock(nn.Cell):
         out = self.relu(out)
         out = self.conv3(out)
         out = self.bn3(out)
-
-        # if self.down_sample:
-        #     identity = self.down_sample_layer(identity)
         
         short_way = self.short_way(identity)
         out = self.add(out, short_way)
@@ -125,7 +220,7 @@ class FirstResidualBlock(nn.Cell):
 
         return out
 
-class ResidualBlock(nn.Cell):
+class Layer2Block(nn.Cell):
     """
     ResNet V1 residual block definition.
 
@@ -147,26 +242,23 @@ class ResidualBlock(nn.Cell):
                  in_channel,
                  out_channel,
                  stride=1):
-        super(ResidualBlock, self).__init__()
+        super(Layer2Block, self).__init__()
         self.stride = stride
-        # channel = out_channel // self.expansion
-        channel = out_channel * 2
+        # channel = out_channel * self.expansion
+        channel = out_channel // self.expansion
         self.conv1 = _conv1x1(in_channel, channel, stride=1)
+        # self.conv1.conv2d.shard({(2, 4), (4, 2)})
+        self.conv1.conv2d.shard(((2, 4)))
         self.bn1 = _bn(channel)
         self.conv2 = _conv3x3(channel, channel, stride=stride)
+        # self.conv2.conv2d.shard({(4, 2), (2, 4)})
+        self.conv2.conv2d.shard(((4, 2)))
         self.bn2 = _bn(channel)
         self.conv3 = _conv1x1(channel, out_channel, stride=1)
+        # self.conv3.conv2d.shard({(4, 2), (8, 1)})
+        self.conv3.conv2d.shard(((4, 2)))
         self.bn3 = _bn_last(out_channel)
         self.relu = nn.ReLU()
-
-        self.down_sample = False
-
-        if stride != 1 or in_channel != out_channel:
-            self.down_sample = True
-        self.down_sample_layer = None
-
-        if self.down_sample:
-            self.down_sample_layer = nn.SequentialCell([_conv1x1(in_channel, out_channel, stride), _bn(out_channel)])
         self.add = P.TensorAdd()
 
     def construct(self, x):
@@ -181,14 +273,10 @@ class ResidualBlock(nn.Cell):
         out = self.conv3(out)
         out = self.bn3(out)
 
-        if self.down_sample:
-            identity = self.down_sample_layer(identity)
-
         out = self.add(out, identity)
         out = self.relu(out)
 
         return out
-
 
 class ResNet(nn.Cell):
     """
@@ -214,7 +302,6 @@ class ResNet(nn.Cell):
     """
 
     def __init__(self,
-                 block,
                  layer_nums,
                  in_channels,
                  out_channels,
@@ -228,51 +315,41 @@ class ResNet(nn.Cell):
         self.bn1 = _bn(64)
         self.relu = P.ReLU()
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, pad_mode="same")
-        self.layer1 = self._make_layer(block,
-                                       layer_nums[0],
-                                       in_channel=in_channels[0],
-                                       out_channel=out_channels[0],
-                                       stride=strides[0])
-        self.layer2 = self._make_layer(block,
+        # self.layer1 = self._make_layer(Layer1FirstBlock,
+        #                                Layer1Block,
+        #                                layer_nums[0],
+        #                                in_channel=in_channels[0],
+        #                                out_channel=out_channels[0],
+        #                                stride=strides[0])
+
+        self.layer2 = self._make_layer(Layer2FirstBlock,
+                                       Layer2Block,
                                        layer_nums[1],
                                        in_channel=in_channels[1],
                                        out_channel=out_channels[1],
                                        stride=strides[1])
-        self.layer3 = self._make_layer(block,
-                                       layer_nums[2],
-                                       in_channel=in_channels[2],
-                                       out_channel=out_channels[2],
-                                       stride=strides[2])
-        self.layer4 = self._make_layer(block,
-                                       layer_nums[3],
-                                       in_channel=in_channels[3],
-                                       out_channel=out_channels[3],
-                                       stride=strides[3])
+
+        # self.layer3 = self._make_layer(Layer1FirstBlock,
+        #                                Layer1Block,
+        #                                layer_nums[2],
+        #                                in_channel=in_channels[2],
+        #                                out_channel=out_channels[2],
+        #                                stride=strides[2])
+        
+        # self.layer4 = self._make_layer(Layer1FirstBlock,
+        #                                Layer1Block,
+        #                                layer_nums[3],
+        #                                in_channel=in_channels[3],
+        #                                out_channel=out_channels[3],
+        #                                stride=strides[3])
 
         self.mean = P.ReduceMean(keep_dims=True)
         self.flatten = nn.Flatten()
         self.end_point = _fc(out_channels[3], num_classes)
 
-    def _make_layer(self, block, layer_num, in_channel, out_channel, stride):
-        """
-        Make stage network of ResNet.
-
-        Args:
-            block (Cell): Resnet block.
-            layer_num (int): Layer number.
-            in_channel (int): Input channel.
-            out_channel (int): Output channel.
-            stride (int): Stride size for the first convolutional layer.
-            se_block(bool): use se block in SE-ResNet50 net. Default: False.
-        Returns:
-            SequentialCell, the output layer.
-
-        Examples:
-            >>> _make_layer(ResidualBlock, 3, 128, 256, 2)
-        """
+    def _make_layer(self, first_block, block, layer_num, in_channel, out_channel, stride):
         layers = []
-
-        resnet_block = FirstResidualBlock(in_channel, out_channel, stride=stride)
+        resnet_block = first_block(in_channel, out_channel, stride=stride)
         layers.append(resnet_block)
         for _ in range(1, layer_num):
             resnet_block = block(out_channel, out_channel, stride=1)
@@ -285,10 +362,12 @@ class ResNet(nn.Cell):
         x = self.relu(x)
         c1 = self.maxpool(x)
 
-        c2 = self.layer1(c1)
-        c3 = self.layer2(c2)
-        c4 = self.layer3(c3)
-        c5 = self.layer4(c4)
+        # c2 = self.layer1(c1)
+        # c3 = self.layer2(c2)
+        # c4 = self.layer3(c3)
+        # c5 = self.layer4(c4)
+
+        c5 = self.layer2(c1)
 
         out = self.mean(c5, (2, 3))
         out = self.flatten(out)
@@ -317,48 +396,7 @@ def resnet50(class_num=10):
     #               [1, 2, 2, 2],
     #               class_num)
 
-    return ResNet(ResidualBlock,
-                  [1, 8, 6, 3],
-                  [64, 256, 512, 1024],
-                  [256, 512, 1024, 2048],
-                  [1, 2, 2, 2],
-                  class_num)
-
-def se_resnet50(class_num=1001):
-    """
-    Get SE-ResNet50 neural network.
-
-    Args:
-        class_num (int): Class number.
-
-    Returns:
-        Cell, cell instance of SE-ResNet50 neural network.
-
-    Examples:
-        >>> net = se-resnet50(1001)
-    """
-    return ResNet(ResidualBlock,
-                  [3, 4, 6, 3],
-                  [64, 256, 512, 1024],
-                  [256, 512, 1024, 2048],
-                  [1, 2, 2, 2],
-                  class_num)
-
-def resnet101(class_num=1001):
-    """
-    Get ResNet101 neural network.
-
-    Args:
-        class_num (int): Class number.
-
-    Returns:
-        Cell, cell instance of ResNet101 neural network.
-
-    Examples:
-        >>> net = resnet101(1001)
-    """
-    return ResNet(ResidualBlock,
-                  [3, 4, 23, 3],
+    return ResNet([1, 1, 6, 3],
                   [64, 256, 512, 1024],
                   [256, 512, 1024, 2048],
                   [1, 2, 2, 2],
